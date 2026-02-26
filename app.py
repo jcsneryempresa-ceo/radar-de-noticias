@@ -169,7 +169,7 @@ st.session_state["itens_por_fonte"] = itens_por_fonte
         resultados = []
         for nome, url in st.session_state.sites.items():
             feed = feedparser.parse(url)
-            for entry in feed.entries[:10]:
+            for entry in feed.entries[:itens_por_fonte]:
                 texto = (entry.title + " " + entry.get("summary", "")).lower()
                 score = 0
                 for palavra, peso in st.session_state.palavras.items():
