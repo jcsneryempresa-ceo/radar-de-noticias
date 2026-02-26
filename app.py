@@ -5,24 +5,6 @@ import feedparser
 import pandas as pd
 import datetime
 
-# ---------- TEMAS (dicionários de apoio) ----------
-TEMAS = [
-    "Política", "Economia", "Esporte", "Moda",
-    "Cultura", "Educação", "Segurança", "Saúde"
-]
-
-# Palavras-base por tema (você pode ajustar com o tempo)
-TEMA_KEYWORDS = {
-    "Política": ["governo", "congresso", "minist", "prefeit", "vereador", "deput", "senad", "elei", "partid", "gestão"],
-    "Economia": ["inflação", "juros", "mercado", "pib", "dólar", "emprego", "renda", "invest", "tribut", "orçamento"],
-    "Esporte": ["campeonato", "atleta", "time", "técnico", "torneio", "gol", "jogo", "liga", "seleção"],
-    "Moda": ["coleção", "tendência", "look", "desfile", "estilo", "marca", "fashion", "roupa", "acessório"],
-    "Cultura": ["festival", "show", "cinema", "teatro", "música", "arte", "exposição", "livro", "literatura"],
-    "Educação": ["escola", "universidade", "enem", "ifrn", "aluno", "professor", "aula", "educação", "matrícula"],
-    "Segurança": ["polícia", "crime", "prisão", "roubo", "assalto", "operação", "violência", "investigação", "suspeito"],
-    "Saúde": ["hospital", "vacina", "doença", "sus", "médico", "saúde", "tratamento", "paciente", "epidemia"]
-}
-
 USO_FILE = "uso_ia.json"
 MAX_DIARIO = 3
 
@@ -73,6 +55,25 @@ def save_profile(p):
         json.dump(p, f, ensure_ascii=False, indent=2)
 
 profile = load_profile()
+
+# ---------- ESCOPO DE VARREDURA (temas e palavras-guia) ----------
+TEMAS = ["Política", "Economia", "Esporte", "Moda", "Cultura", "Educação", "Segurança", "Saúde"]
+
+PALAVRAS_TEMA = {
+    "Política": ["governo", "congresso", "senado", "câmara", "prefeitura", "vereador", "deputado", "ministro", "partido", "eleição", "campanha", "plenário"],
+    "Economia": ["inflação", "juros", "selic", "pib", "mercado", "dólar", "emprego", "renda", "investimento", "imposto", "arrecadação", "orçamento"],
+    "Esporte": ["campeonato", "time", "atleta", "técnico", "partida", "vitória", "derrota", "torneio", "copa", "liga", "gol", "treino"],
+    "Moda": ["coleção", "tendência", "look", "desfile", "passarela", "estilo", "marca", "roupa", "fashion", "streetwear", "acessório"],
+    "Cultura": ["show", "festival", "arte", "música", "cinema", "teatro", "exposição", "livro", "literatura", "cultural", "museu"],
+    "Educação": ["escola", "professor", "aluno", "aula", "enem", "universidade", "ifrn", "curso", "ensino", "educação", "matrícula"],
+    "Segurança": ["polícia", "crime", "assalto", "roubo", "furto", "prisão", "investigação", "violência", "homicídio", "operação", "delegacia"],
+    "Saúde": ["hospital", "sus", "vacina", "doença", "surto", "atendimento", "médico", "paciente", "epidemia", "saúde", "tratamento"],
+}
+
+def _normalizar_lista_locais(txt: str):
+    # suporta: "RN, Natal, Parnamirim"
+    itens = [t.strip() for t in (txt or "").split(",")]
+    return [i for i in itens if i]
 
 # ---------- HEADER ----------
 st.title("📡 Radar de Notícias")
