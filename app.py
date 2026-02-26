@@ -5,6 +5,24 @@ import feedparser
 import pandas as pd
 import datetime
 
+# ---------- TEMAS (dicionários de apoio) ----------
+TEMAS = [
+    "Política", "Economia", "Esporte", "Moda",
+    "Cultura", "Educação", "Segurança", "Saúde"
+]
+
+# Palavras-base por tema (você pode ajustar com o tempo)
+TEMA_KEYWORDS = {
+    "Política": ["governo", "congresso", "minist", "prefeit", "vereador", "deput", "senad", "elei", "partid", "gestão"],
+    "Economia": ["inflação", "juros", "mercado", "pib", "dólar", "emprego", "renda", "invest", "tribut", "orçamento"],
+    "Esporte": ["campeonato", "atleta", "time", "técnico", "torneio", "gol", "jogo", "liga", "seleção"],
+    "Moda": ["coleção", "tendência", "look", "desfile", "estilo", "marca", "fashion", "roupa", "acessório"],
+    "Cultura": ["festival", "show", "cinema", "teatro", "música", "arte", "exposição", "livro", "literatura"],
+    "Educação": ["escola", "universidade", "enem", "ifrn", "aluno", "professor", "aula", "educação", "matrícula"],
+    "Segurança": ["polícia", "crime", "prisão", "roubo", "assalto", "operação", "violência", "investigação", "suspeito"],
+    "Saúde": ["hospital", "vacina", "doença", "sus", "médico", "saúde", "tratamento", "paciente", "epidemia"]
+}
+
 USO_FILE = "uso_ia.json"
 MAX_DIARIO = 3
 
