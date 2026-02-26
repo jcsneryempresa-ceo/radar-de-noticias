@@ -3,6 +3,31 @@ import json
 import streamlit as st
 import feedparser
 import pandas as pd
+import datetime
+
+USO_FILE = "uso_ia.json"
+MAX_DIARIO = 3
+
+def carregar_uso():
+    try:
+        with open(USO_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {"data": str(datetime.date.today()), "contador": 0}
+
+def salvar_uso(dados):
+    with open(USO_FILE, "w") as f:
+        json.dump(dados, f)
+
+def verificar_limite_diario():
+    uso = carregar_uso()
+    hoje = str(datetime.date.today())
+
+    if uso["data"] != hoje:
+        uso = {"data": hoje, "contador": 0}
+        salvar_uso(uso)
+
+    return uso
 from collections import Counter
 from openai import OpenAI
 
