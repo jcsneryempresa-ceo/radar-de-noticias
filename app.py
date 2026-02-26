@@ -15,19 +15,17 @@ sites_default = {
 }
 
 if "sites" not in st.session_state:
-st.session_state.sites = sites_default.copy()
+    st.session_state.sites = sites_default.copy()
 
 if "palavras" not in st.session_state:
-  st.session_state.sites = sites_default.copy()
+    st.session_state.palavras = {
+        "RN": 3,
+        "Natal": 2,
+        "Parnamirim": 4,
+        "esporte": 2,
+        "amador": 5
+    }
 
-if "palavras" not in st.session_state:
-st.session_state.palavras = {
-"RN": 3,
-"Natal": 2,
-"Parnamirim": 4,
-"esporte": 2,
-"amador": 5
-}
 st.header("🔎 Buscar Notícias")
 
 if st.button("Buscar agora"):
