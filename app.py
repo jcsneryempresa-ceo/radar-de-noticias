@@ -172,6 +172,18 @@ st.session_state["itens_por_fonte"] = itens_por_fonte
             for entry in feed.entries[:itens_por_fonte]:
                 texto = (entry.title + " " + entry.get("summary", "")).lower()
                 score = 0
+                locais = _normalizar_lista_locais(local_do_dia)
+palavras_guia = PALAVRAS_TEMA.get(tema_do_dia, [])
+
+# score tema (leve, mas útil)
+for w in palavras_guia:
+    if w in texto:
+        score += 2
+
+# score local (mais forte)
+for loc in locais:
+    if loc.lower() in texto:
+        score += 4
                 for palavra, peso in st.session_state.palavras.items():
                     if palavra.lower() in texto:
                         score += peso
@@ -181,6 +193,8 @@ st.session_state["itens_por_fonte"] = itens_por_fonte
                     "link": entry.link,
                     "resumo": entry.get("summary", ""),
                     "score": score
+                    "tema": tema_do_dia,
+                    "local": local_do_dia,
                 })
 
         df = pd.DataFrame(resultados)
