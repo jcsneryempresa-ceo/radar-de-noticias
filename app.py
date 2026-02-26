@@ -173,7 +173,7 @@ st.session_state["itens_por_fonte"] = itens_por_fonte
                 texto = (entry.title + " " + entry.get("summary", "")).lower()
                 score = 0
                 locais = _normalizar_lista_locais(local_do_dia)
-palavras_guia = PALAVRAS_TEMA.get(tema_do_dia, [])
+                palavras_guia = PALAVRAS_TEMA.get(tema_do_dia, [])
 
 # score tema (leve, mas útil)
 for w in palavras_guia:
