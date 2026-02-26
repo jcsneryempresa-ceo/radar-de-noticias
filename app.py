@@ -200,9 +200,59 @@ with tabs[2]:
     social_texto = st.text_area("Texto do post (opcional, recomendado se quiser reaproveitar)", height=90)
 
     if st.button("Gerar texto com IA ✍️"):
-        if st.session_state.gen_count >= MAX_GEN_SESSION:
-            st.error("Limite de gerações nesta sessão atingido. Recarregue mais tarde.")
-            st.stop()
+
+    # 🔒 Verificar limite diário
+    uso = verificar_limite_diario()
+
+    if uso["contador"] >= MAX_DIARIO:
+        st.error("Limite diário de gerações atingido (3 por dia). Tente amanhã.")
+        st.stop()
+
+    materia = df.loc[escolha].to_dict()
+
+    regras_seguranca = (
+        "Regras: não afirme acusações como fato sem atribuição. "
+        "Use 'segundo a matéria', 'de acordo com', 'a investigação apura' quando houver alegações. "
+        "Evite difamação. Mantenha linguagem responsável."
+    )
+
+    instrucao = f"""
+Você é um redator para o portal "{profile.get('nome_portal')}".
+Assinatura: "{profile.get('assinatura')}".
+Estilo: {profile.get('estilo')}.
+Intenção comunicativa: {profile.get('intencao_comunicativa')}.
+Tamanho: {profile.get('tamanho_padrao')} com cerca de {profile.get('linhas')} linhas.
+Formato solicitado: {formato}.
+{regras_seguranca}
+
+Base (matéria):
+Título: {materia.get('titulo')}
+Fonte: {materia.get('fonte')}
+Link: {materia.get('link')}
+Resumo: {materia.get('resumo')}
+
+Insumo social (se houver):
+Link: {social_link}
+Texto: {social_texto}
+"""
+
+    client = OpenAI(api_key=api_key)
+    resp = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {"role": "system", "content": "Você escreve textos jornalísticos e conteúdos para redes sociais em PT-BR."},
+            {"role": "user", "content": instrucao}
+        ],
+        temperature=0.7
+    )
+
+    # 🔢 Atualizar contador diário
+    uso["contador"] += 1
+    salvar_uso(uso)
+
+    st.success("Gerado ✅")
+    st.text_area("Resultado", value=resp.choices[0].message.content, height=260)
+    st.caption(f"Gerações hoje: {uso['contador']}/3")
 
         materia = df.loc[escolha].to_dict()
 
