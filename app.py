@@ -7,7 +7,7 @@ st.set_page_config(page_title="Radar de Notícias", layout="centered")
 
 st.title("📡 Radar de Notícias")
 sites_default = {
-"Tribuna do Norte": "https://tribunadonorte.com.br/feed/
+"Tribuna do Norte": "https://tribunadonorte.com.br/feed/",
 ",
 "Agora RN": "https://agorarn.com.br/feed/
 ",
