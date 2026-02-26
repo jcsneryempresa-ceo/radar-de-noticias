@@ -1,12 +1,55 @@
 import os
 import json
+import datetime
 import streamlit as st
 import feedparser
 import pandas as pd
-import datetime
+from collections import Counter
+from openai import OpenAI
 
+st.set_page_config(page_title="Radar de Notícias", layout="centered")
+
+# ==============================
+# CONFIGURAÇÕES GERAIS
+# ==============================
+
+PROFILE_FILE = "perfil.json"
 USO_FILE = "uso_ia.json"
 MAX_DIARIO = 3
+
+TEMAS = ["Política", "Economia", "Esporte", "Moda", "Cultura", "Educação", "Segurança", "Saúde"]
+
+PALAVRAS_TEMA = {
+    "Política": ["governo","congresso","prefeitura","vereador","deputado","ministro","partido","eleição"],
+    "Economia": ["inflação","juros","pib","mercado","emprego","renda","investimento"],
+    "Esporte": ["campeonato","time","atleta","partida","vitória","gol","copa"],
+    "Moda": ["coleção","tendência","look","desfile","marca","estilo"],
+    "Cultura": ["show","festival","arte","cinema","teatro","livro"],
+    "Educação": ["escola","professor","aluno","enem","universidade","curso"],
+    "Segurança": ["polícia","crime","assalto","roubo","prisão","investigação"],
+    "Saúde": ["hospital","sus","vacina","doença","médico","tratamento"]
+}
+
+# ==============================
+# FUNÇÕES AUXILIARES
+# ==============================
+
+def load_profile():
+    try:
+        with open(PROFILE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {
+            "nome_portal": "Radar de Notícias",
+            "assinatura": "jcsnery.empresa",
+            "estilo": "jornalistico",
+            "intencao_comunicativa": "neutro",
+            "linhas": 10
+        }
+
+def save_profile(p):
+    with open(PROFILE_FILE, "w", encoding="utf-8") as f:
+        json.dump(p, f, ensure_ascii=False, indent=2)
 
 def carregar_uso():
     try:
@@ -19,7 +62,7 @@ def salvar_uso(dados):
     with open(USO_FILE, "w") as f:
         json.dump(dados, f)
 
-def verificar_limite_diario():
+def verificar_limite():
     uso = carregar_uso()
     hoje = str(datetime.date.today())
 
@@ -28,283 +71,156 @@ def verificar_limite_diario():
         salvar_uso(uso)
 
     return uso
-from collections import Counter
-from openai import OpenAI
 
-st.set_page_config(page_title="Radar de Notícias", layout="centered")
+def normalizar_locais(txt):
+    return [x.strip() for x in txt.split(",") if x.strip()]
 
-# ---------- PERFIL (carrega do JSON) ----------
-PROFILE_FILE = "perfil.json"
-
-def load_profile():
-    try:
-        with open(PROFILE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {
-            "nome_portal": "Radar de Notícias",
-            "assinatura": "jcsnery.empresa",
-            "estilo": "jornalistico",
-            "intencao_comunicativa": "neutro",
-            "tamanho_padrao": "medio",
-            "linhas": 10
-        }
-
-def save_profile(p):
-    with open(PROFILE_FILE, "w", encoding="utf-8") as f:
-        json.dump(p, f, ensure_ascii=False, indent=2)
+# ==============================
+# INÍCIO DO APP
+# ==============================
 
 profile = load_profile()
 
-# ---------- ESCOPO DE VARREDURA (temas e palavras-guia) ----------
-TEMAS = ["Política", "Economia", "Esporte", "Moda", "Cultura", "Educação", "Segurança", "Saúde"]
-
-PALAVRAS_TEMA = {
-    "Política": ["governo", "congresso", "senado", "câmara", "prefeitura", "vereador", "deputado", "ministro", "partido", "eleição", "campanha", "plenário"],
-    "Economia": ["inflação", "juros", "selic", "pib", "mercado", "dólar", "emprego", "renda", "investimento", "imposto", "arrecadação", "orçamento"],
-    "Esporte": ["campeonato", "time", "atleta", "técnico", "partida", "vitória", "derrota", "torneio", "copa", "liga", "gol", "treino"],
-    "Moda": ["coleção", "tendência", "look", "desfile", "passarela", "estilo", "marca", "roupa", "fashion", "streetwear", "acessório"],
-    "Cultura": ["show", "festival", "arte", "música", "cinema", "teatro", "exposição", "livro", "literatura", "cultural", "museu"],
-    "Educação": ["escola", "professor", "aluno", "aula", "enem", "universidade", "ifrn", "curso", "ensino", "educação", "matrícula"],
-    "Segurança": ["polícia", "crime", "assalto", "roubo", "furto", "prisão", "investigação", "violência", "homicídio", "operação", "delegacia"],
-    "Saúde": ["hospital", "sus", "vacina", "doença", "surto", "atendimento", "médico", "paciente", "epidemia", "saúde", "tratamento"],
-}
-
-def _normalizar_lista_locais(txt: str):
-    # suporta: "RN, Natal, Parnamirim"
-    itens = [t.strip() for t in (txt or "").split(",")]
-    return [i for i in itens if i]
-
-# ---------- HEADER ----------
 st.title("📡 Radar de Notícias")
-st.caption(f"{profile.get('nome_portal','')} • {profile.get('assinatura','')}")
+st.caption(f"{profile['nome_portal']} • {profile['assinatura']}")
 
-tabs = st.tabs(["Identidade & Diretrizes", "Inteligência", "Produção"])
+tabs = st.tabs(["Identidade", "Inteligência", "Produção"])
 
-# ---------- CONFIG DEFAULTS ----------
-sites_default = {
-    "Tribuna do Norte": "https://tribunadonorte.com.br/feed/",
-    "Agora RN": "https://agorarn.com.br/feed/",
-    "GE RN": "https://ge.globo.com/rss/ge/rn/"
-}
+# ==============================
+# ABA IDENTIDADE
+# ==============================
 
-if "sites" not in st.session_state:
-    st.session_state.sites = sites_default.copy()
-
-if "palavras" not in st.session_state:
-    st.session_state.palavras = {"RN": 3, "Natal": 2, "Parnamirim": 4, "esporte": 2, "amador": 5}
-
-if "ultimo_df" not in st.session_state:
-    st.session_state.ultimo_df = None
-
-# ---------- TAB 1: PERFIL ----------
 with tabs[0]:
-    st.subheader("Identidade & Diretrizes")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        nome_portal = st.text_input("Nome do portal", value=profile.get("nome_portal", "Radar de Notícias"))
-        assinatura = st.text_input("Assinatura", value=profile.get("assinatura", "jcsnery.empresa"))
-    with col2:
-        estilo = st.selectbox(
-            "Estilo de linguagem",
-            ["jornalistico", "analitico", "didatico", "opinativo_leve", "jovem"],
-            index=["jornalistico","analitico","didatico","opinativo_leve","jovem"].index(profile.get("estilo","jornalistico"))
-        )
-        linhas = st.slider("Quantidade de linhas (aprox.)", 4, 20, int(profile.get("linhas", 10)))
+    nome = st.text_input("Nome do Portal", profile["nome_portal"])
+    assinatura = st.text_input("Assinatura", profile["assinatura"])
+    estilo = st.selectbox("Estilo", ["jornalistico","analitico","opinativo","didatico"])
+    linhas = st.slider("Quantidade aproximada de linhas", 4, 20, profile["linhas"])
+    intencao = st.text_area("Intenção comunicativa")
 
-    intencao = st.text_area(
-        "Intenção comunicativa (o que você quer que o texto deixe claro)",
-        value=profile.get("intencao_comunicativa", ""),
-        height=90,
-        placeholder="Ex.: contextualizar, cobrar transparência, mostrar que é sistêmico, etc."
-    )
-
-    tamanho = st.selectbox(
-        "Tamanho padrão",
-        ["curto", "medio", "longo"],
-        index=["curto","medio","longo"].index(profile.get("tamanho_padrao","medio"))
-    )
-
-    if st.button("Salvar diretrizes"):
-        profile = {
-            "nome_portal": nome_portal,
+    if st.button("Salvar Perfil"):
+        save_profile({
+            "nome_portal": nome,
             "assinatura": assinatura,
             "estilo": estilo,
             "intencao_comunicativa": intencao,
-            "tamanho_padrao": tamanho,
             "linhas": linhas
-        }
-        save_profile(profile)
-        st.success("Diretrizes salvas. Vamos lá! ✅")
+        })
+        st.success("Perfil salvo!")
 
-# ---------- TAB 2: RADAR ----------
+# ==============================
+# ABA INTELIGÊNCIA
+# ==============================
+
 with tabs[1]:
-    st.subheader("Inteligência de Curadoria")
 
-    with st.expander("Fontes (RSS) e Palavras-chave", expanded=False):
-        st.write("Fontes ativas:")
-        for nome, url in list(st.session_state.sites.items()):
-            st.write(f"• {nome} — {url}")
+    st.subheader("Escopo da Varredura")
 
-        st.write("Pesos atuais:")
-        st.write(st.session_state.palavras)
+    tema_do_dia = st.selectbox("Tema", TEMAS)
+    local_do_dia = st.text_input("Local (ex: RN, Natal)")
+    itens_por_fonte = st.slider("Itens por fonte", 5, 30, 10)
 
-    st.subheader("Escopo desta varredura")
+    sites = {
+        "Tribuna do Norte": "https://tribunadonorte.com.br/feed/",
+        "Agora RN": "https://agorarn.com.br/feed/"
+    }
 
-colA, colB, colC = st.columns([1, 1, 1])
-with colA:
-    tema_do_dia = st.selectbox("Tema", TEMAS, index=0)
-with colB:
-    local_do_dia = st.text_input("Local (opcional)", placeholder="Ex.: RN, Natal, Parnamirim")
-with colC:
-    itens_por_fonte = st.slider("Itens por fonte", 5, 30, 10, step=5)
-
-# guarda para uso nas próximas abas (produção/planejamento)
-st.session_state["tema_do_dia"] = tema_do_dia
-st.session_state["local_do_dia"] = local_do_dia
-st.session_state["itens_por_fonte"] = itens_por_fonte
-
-    if st.button("Vamos lá 🚀 Executar varredura editorial"):
+    if st.button("Vamos lá 🚀 Executar varredura"):
 
         resultados = []
 
-    for nome, url in st.session_state.sites.items():
-        feed = feedparser.parse(url)
+        for nome_site, url in sites.items():
+            feed = feedparser.parse(url)
 
-        for entry in feed.entries[:itens_por_fonte]:
-            texto = (entry.title + " " + entry.get("summary", "")).lower()
-            score = 0
+            for entry in feed.entries[:itens_por_fonte]:
 
-            locais = _normalizar_lista_locais(local_do_dia)
-            palavras_guia = PALAVRAS_TEMA.get(tema_do_dia, [])
+                texto = (entry.title + " " + entry.get("summary","")).lower()
+                score = 0
 
-            # score tema (leve, mas útil)
-            for w in palavras_guia:
-                if w in texto:
-                    score += 2
+                for w in PALAVRAS_TEMA.get(tema_do_dia, []):
+                    if w in texto:
+                        score += 2
 
-            # score local (mais forte)
-            for loc in locais:
-                if loc.lower() in texto:
-                    score += 4
+                for loc in normalizar_locais(local_do_dia):
+                    if loc.lower() in texto:
+                        score += 4
 
-            # score por palavras/pesos do cliente
-            for palavra, peso in st.session_state.palavras.items():
-                if palavra.lower() in texto:
-                    score += peso
+                resultados.append({
+                    "fonte": nome_site,
+                    "titulo": entry.title,
+                    "link": entry.link,
+                    "resumo": entry.get("summary",""),
+                    "score": score
+                })
 
-            resultados.append({
-                "fonte": nome,
-                "titulo": entry.title,
-                "link": entry.link,
-                "resumo": entry.get("summary", ""),
-                "score": score,
-                "tema": tema_do_dia,
-                "local": local_do_dia
-            })
+        df = pd.DataFrame(resultados)
 
-    df = pd.DataFrame(resultados)
-
-    if not df.empty:
-        df = df.sort_values(by="score", ascending=False)
-        st.session_state.ultimo_df = df
-        st.success("Varredura concluída. Ranking atualizado ✅")
-        st.dataframe(df.head(12))
-    else:
-        st.warning("Nenhum resultado encontrado nas fontes atuais.")
-        
-    st.divider()
-    st.subheader("Radar Editorial (tendência)")
-    if st.session_state.ultimo_df is not None:
-        texto_geral = " ".join((st.session_state.ultimo_df["titulo"].fillna("") + " " + st.session_state.ultimo_df["resumo"].fillna("")).tolist()).lower()
-        cont = Counter()
-        for palavra in st.session_state.palavras.keys():
-            if palavra.lower() in texto_geral:
-                cont[palavra] += texto_geral.count(palavra.lower())
-        if cont:
-            dominante = cont.most_common(1)[0][0]
-            st.info(f"Tendência dominante (pelas suas palavras): {dominante}")
+        if not df.empty:
+            df = df.sort_values("score", ascending=False)
+            st.session_state["ranking"] = df
+            st.dataframe(df.head(10))
         else:
-            st.info("Sem tendência clara pelas palavras configuradas (isso pode ser bom).")
-    else:
-        st.caption("Execute a varredura para ver tendências.")
+            st.warning("Nenhum resultado encontrado.")
 
-# ---------- TAB 3: PRODUÇÃO (OpenAI) ----------
+# ==============================
+# ABA PRODUÇÃO
+# ==============================
+
 with tabs[2]:
-    st.subheader("Produção Editorial")
 
     api_key = st.secrets.get("OPENAI_API_KEY", None)
+
     if not api_key:
-        st.error("Chave de IA não configurada (OPENAI_API_KEY em Secrets).")
+        st.error("Chave OPENAI_API_KEY não configurada.")
         st.stop()
 
-    # Limite simples (proteção básica)
-    if "gen_count" not in st.session_state:
-        st.session_state.gen_count = 0
-    MAX_GEN_SESSION = 10
-
-    if st.session_state.ultimo_df is None or st.session_state.ultimo_df.empty:
-        st.warning("Primeiro execute a varredura na aba Inteligência.")
+    if "ranking" not in st.session_state:
+        st.warning("Execute a varredura antes.")
         st.stop()
 
-    df = st.session_state.ultimo_df.head(20).reset_index(drop=True)
-    escolha = st.selectbox("Escolha uma matéria do ranking", options=list(range(len(df))), format_func=lambda i: f"{df.loc[i,'titulo']} ({df.loc[i,'fonte']})")
+    df = st.session_state["ranking"]
 
-    formato = st.selectbox("Formato de saída", ["Título + Lide", "Título + Lide + 1º parágrafo", "Legenda Instagram (curta)"])
-    social_link = st.text_input("Link social (opcional, só referência)", placeholder="Cole um link de post, se quiser")
-    social_texto = st.text_area("Texto do post (opcional, recomendado se quiser reaproveitar)", height=90)
-
-if st.button("Gerar texto com IA ✍️"):
-
-    # 🔒 Verificar limite diário
-    uso = verificar_limite_diario()
-
-    if uso["contador"] >= MAX_DIARIO:
-        st.error("Limite diário de gerações atingido (3 por dia). Tente amanhã.")
-        st.stop()
-
-    materia = df.loc[escolha].to_dict()
-
-    regras_seguranca = (
-        "Regras: não afirme acusações como fato sem atribuição. "
-        "Use 'segundo a matéria', 'de acordo com', 'a investigação apura' quando houver alegações. "
-        "Evite difamação. Mantenha linguagem responsável."
+    escolha = st.selectbox(
+        "Escolha a matéria",
+        range(len(df)),
+        format_func=lambda i: df.iloc[i]["titulo"]
     )
 
-    instrucao = f"""
-Você é um redator para o portal "{profile.get('nome_portal')}".
-Assinatura: "{profile.get('assinatura')}".
-Estilo: {profile.get('estilo')}.
-Intenção comunicativa: {profile.get('intencao_comunicativa')}.
-Tamanho: {profile.get('tamanho_padrao')} com cerca de {profile.get('linhas')} linhas.
-Formato solicitado: {formato}.
-{regras_seguranca}
+    if st.button("Gerar texto com IA ✍️"):
 
-Base (matéria):
-Título: {materia.get('titulo')}
-Fonte: {materia.get('fonte')}
-Link: {materia.get('link')}
-Resumo: {materia.get('resumo')}
+        uso = verificar_limite()
 
-Insumo social (se houver):
-Link: {social_link}
-Texto: {social_texto}
+        if uso["contador"] >= MAX_DIARIO:
+            st.error("Limite diário de 3 gerações atingido.")
+            st.stop()
+
+        materia = df.iloc[escolha]
+
+        prompt = f"""
+Você é redator do portal {profile['nome_portal']}.
+Estilo: {profile['estilo']}
+Intenção: {profile['intencao_comunicativa']}
+Escreva cerca de {profile['linhas']} linhas.
+
+Base:
+Título: {materia['titulo']}
+Resumo: {materia['resumo']}
 """
 
-    client = OpenAI(api_key=api_key)
-    resp = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
-            {"role": "system", "content": "Você escreve textos jornalísticos e conteúdos para redes sociais em PT-BR."},
-            {"role": "user", "content": instrucao}
-        ],
-        temperature=0.7
-    )
+        client = OpenAI(api_key=api_key)
 
-    uso["contador"] += 1
-    salvar_uso(uso)
+        resposta = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": "Você escreve textos jornalísticos em português do Brasil."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
 
-    st.success("Gerado ✅")
-    st.text_area("Resultado", value=resp.choices[0].message.content, height=260)
-    st.caption(f"Gerações hoje: {uso['contador']}/3")
+        uso["contador"] += 1
+        salvar_uso(uso)
+
+        st.success("Texto gerado!")
+        st.text_area("Resultado", resposta.choices[0].message.content, height=300)
+        st.caption(f"Gerações hoje: {uso['contador']}/3")
