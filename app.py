@@ -150,6 +150,21 @@ with tabs[1]:
         st.write("Pesos atuais:")
         st.write(st.session_state.palavras)
 
+    st.subheader("Escopo desta varredura")
+
+colA, colB, colC = st.columns([1, 1, 1])
+with colA:
+    tema_do_dia = st.selectbox("Tema", TEMAS, index=0)
+with colB:
+    local_do_dia = st.text_input("Local (opcional)", placeholder="Ex.: RN, Natal, Parnamirim")
+with colC:
+    itens_por_fonte = st.slider("Itens por fonte", 5, 30, 10, step=5)
+
+# guarda para uso nas próximas abas (produção/planejamento)
+st.session_state["tema_do_dia"] = tema_do_dia
+st.session_state["local_do_dia"] = local_do_dia
+st.session_state["itens_por_fonte"] = itens_por_fonte
+
     if st.button("Vamos lá 🚀 Executar varredura editorial"):
         resultados = []
         for nome, url in st.session_state.sites.items():
