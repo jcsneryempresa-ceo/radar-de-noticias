@@ -167,7 +167,7 @@ st.session_state["itens_por_fonte"] = itens_por_fonte
 
     if st.button("Vamos lá 🚀 Executar varredura editorial"):
 
-    resultados = []
+        resultados = []
 
     for nome, url in st.session_state.sites.items():
         feed = feedparser.parse(url)
