@@ -166,46 +166,54 @@ st.session_state["local_do_dia"] = local_do_dia
 st.session_state["itens_por_fonte"] = itens_por_fonte
 
     if st.button("Vamos lá 🚀 Executar varredura editorial"):
-        resultados = []
-        for nome, url in st.session_state.sites.items():
-            feed = feedparser.parse(url)
-            for entry in feed.entries[:itens_por_fonte]:
-                texto = (entry.title + " " + entry.get("summary", "")).lower()
-                score = 0
-                locais = _normalizar_lista_locais(local_do_dia)
-                palavras_guia = PALAVRAS_TEMA.get(tema_do_dia, [])
 
-# score tema (leve, mas útil)
-for w in palavras_guia:
-    if w in texto:
-        score += 2
+    resultados = []
 
-# score local (mais forte)
-for loc in locais:
-    if loc.lower() in texto:
-        score += 4
-                for palavra, peso in st.session_state.palavras.items():
-                    if palavra.lower() in texto:
-                        score += peso
-                resultados.append({
-                    "fonte": nome,
-                    "titulo": entry.title,
-                    "link": entry.link,
-                    "resumo": entry.get("summary", ""),
-                    "score": score
-                    "tema": tema_do_dia,
-                    "local": local_do_dia,
-                })
+    for nome, url in st.session_state.sites.items():
+        feed = feedparser.parse(url)
 
-        df = pd.DataFrame(resultados)
-        if not df.empty:
-            df = df.sort_values(by="score", ascending=False)
-            st.session_state.ultimo_df = df
-            st.success("Varredura concluída. Ranking atualizado ✅")
-            st.dataframe(df.head(12))
-        else:
-            st.warning("Nenhum resultado encontrado nas fontes atuais.")
+        for entry in feed.entries[:itens_por_fonte]:
+            texto = (entry.title + " " + entry.get("summary", "")).lower()
+            score = 0
 
+            locais = _normalizar_lista_locais(local_do_dia)
+            palavras_guia = PALAVRAS_TEMA.get(tema_do_dia, [])
+
+            # score tema (leve, mas útil)
+            for w in palavras_guia:
+                if w in texto:
+                    score += 2
+
+            # score local (mais forte)
+            for loc in locais:
+                if loc.lower() in texto:
+                    score += 4
+
+            # score por palavras/pesos do cliente
+            for palavra, peso in st.session_state.palavras.items():
+                if palavra.lower() in texto:
+                    score += peso
+
+            resultados.append({
+                "fonte": nome,
+                "titulo": entry.title,
+                "link": entry.link,
+                "resumo": entry.get("summary", ""),
+                "score": score,
+                "tema": tema_do_dia,
+                "local": local_do_dia
+            })
+
+    df = pd.DataFrame(resultados)
+
+    if not df.empty:
+        df = df.sort_values(by="score", ascending=False)
+        st.session_state.ultimo_df = df
+        st.success("Varredura concluída. Ranking atualizado ✅")
+        st.dataframe(df.head(12))
+    else:
+        st.warning("Nenhum resultado encontrado nas fontes atuais.")
+        
     st.divider()
     st.subheader("Radar Editorial (tendência)")
     if st.session_state.ultimo_df is not None:
