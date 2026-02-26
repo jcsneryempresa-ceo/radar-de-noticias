@@ -199,7 +199,7 @@ with tabs[2]:
     social_link = st.text_input("Link social (opcional, só referência)", placeholder="Cole um link de post, se quiser")
     social_texto = st.text_area("Texto do post (opcional, recomendado se quiser reaproveitar)", height=90)
 
-    if st.button("Gerar texto com IA ✍️"):
+if st.button("Gerar texto com IA ✍️"):
 
     # 🔒 Verificar limite diário
     uso = verificar_limite_diario()
