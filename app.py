@@ -7,12 +7,11 @@ st.set_page_config(page_title="Radar de Notícias", layout="centered")
 
 st.title("📡 Radar de Notícias")
 sites_default = {
-"Tribuna do Norte": "https://tribunadonorte.com.br/feed/",
-",
-"Agora RN": "https://agorarn.com.br/feed/
-",
-"GE RN": "https://ge.globo.com/rss/ge/rn/
-"
+# Configuração inicial
+sites_default = {
+    "Tribuna do Norte": "https://tribunadonorte.com.br/feed/",
+    "Agora RN": "https://agorarn.com.br/feed/",
+    "GE RN": "https://ge.globo.com/rss/ge/rn/"
 }
 
 if "sites" not in st.session_state:
