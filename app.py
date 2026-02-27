@@ -317,7 +317,7 @@ Regras:
         client = OpenAI(api_key=api_key)
 
         resposta = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Você escreve textos jornalísticos em português do Brasil, sem inventar fatos."},
                 {"role": "user", "content": prompt},
