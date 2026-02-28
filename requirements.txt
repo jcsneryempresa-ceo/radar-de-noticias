@@ -2,3 +2,4 @@ streamlit
 feedparser
 pandas
 openai
+google-generativeai
