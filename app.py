@@ -1,12 +1,15 @@
-import os
 import json
+import re
+import uuid
 import datetime as dt
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from collections import Counter
+
 import streamlit as st
 import feedparser
 import pandas as pd
-from openai import OpenAI
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+import google.generativeai as genai
 
 # ==============================
 # CONFIG
@@ -14,13 +17,16 @@ from zoneinfo import ZoneInfo
 
 st.set_page_config(page_title="Radar de Notícias", layout="centered")
 
-PROFILE_FILE = "perfil.json"
-USO_FILE = "uso_ia.json"
-MAX_DIARIO = 3
-
 BRT = ZoneInfo("America/Fortaleza")
 
-TEMAS = ["Política", "Economia", "Esporte", "Moda", "Cultura", "Educação", "Segurança", "Saúde"]
+PROFILE_FILE = "perfil.json"
+USO_FILE = "uso_ia.json"
+AGENDA_FILE = "agenda.json"
+PUBLICACOES_FILE = "publicacoes.json"
+
+MAX_DIARIO = 3
+
+EDITORIAIS = ["livre", "Política", "Economia", "Esporte", "Moda", "Cultura", "Educação", "Segurança", "Saúde"]
 
 PALAVRAS_TEMA = {
     "Política": ["governo", "congresso", "prefeitura", "vereador", "deputado", "ministro", "partido", "eleição"],
@@ -33,37 +39,52 @@ PALAVRAS_TEMA = {
     "Saúde": ["hospital", "sus", "vacina", "doença", "médico", "tratamento"],
 }
 
+STOPWORDS_PT = {
+    "a", "o", "os", "as", "de", "da", "do", "das", "dos", "em", "no", "na", "nos", "nas",
+    "para", "por", "com", "sem", "um", "uma", "uns", "umas", "e", "ou", "ao", "aos", "à",
+    "às", "que", "se", "sua", "seu", "suas", "seus", "são", "ser", "foi", "é", "vai", "já",
+    "mais", "menos", "entre", "sobre", "contra", "após", "antes", "durante", "até", "isso",
+    "essa", "esse", "este", "esta", "esses", "essas", "como", "quando", "onde", "porque",
+    "pra", "pela", "pelo", "pelas", "pelos",
+}
+
 # ==============================
-# HELPERS
+# JSON helpers
+# ==============================
+
+def read_json(path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+def write_json(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+# ==============================
+# Profile / usage
 # ==============================
 
 def load_profile():
-    try:
-        with open(PROFILE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {
-            "nome_portal": "Radar de Notícias",
-            "assinatura": "jcsnery.empresa",
-            "estilo": "jornalistico",
-            "intencao_comunicativa": "neutro",
-            "linhas": 10,
-        }
+    return read_json(PROFILE_FILE, {
+        "nome_portal": "Radar de Notícias",
+        "nome_redator": "José Nery",
+        "assinatura": "jcsnery.empresa",
+        "estilo": "jornalistico",
+        "linhas": 10,
+        "intencao_comunicativa": "neutro",
+    })
 
 def save_profile(p):
-    with open(PROFILE_FILE, "w", encoding="utf-8") as f:
-        json.dump(p, f, ensure_ascii=False, indent=2)
+    write_json(PROFILE_FILE, p)
 
 def carregar_uso():
-    try:
-        with open(USO_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {"data": str(dt.date.today()), "contador": 0}
+    return read_json(USO_FILE, {"data": str(dt.date.today()), "contador": 0})
 
 def salvar_uso(dados):
-    with open(USO_FILE, "w", encoding="utf-8") as f:
-        json.dump(dados, f, ensure_ascii=False, indent=2)
+    write_json(USO_FILE, dados)
 
 def verificar_limite():
     uso = carregar_uso()
@@ -73,14 +94,30 @@ def verificar_limite():
         salvar_uso(uso)
     return uso
 
+# ==============================
+# Agenda / publicações
+# ==============================
+
+def load_agenda():
+    return read_json(AGENDA_FILE, {"itens": []})
+
+def save_agenda(agenda):
+    write_json(AGENDA_FILE, agenda)
+
+def load_publicacoes():
+    return read_json(PUBLICACOES_FILE, {"itens": []})
+
+def save_publicacoes(pub):
+    write_json(PUBLICACOES_FILE, pub)
+
+# ==============================
+# Text helpers
+# ==============================
+
 def normalizar_locais(txt: str):
     return [x.strip() for x in (txt or "").split(",") if x.strip()]
 
 def extrair_data_entry(entry):
-    """
-    Pega data do item RSS e devolve datetime em BRT.
-    Se não existir data, devolve None.
-    """
     if getattr(entry, "published_parsed", None):
         dtu = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
         return dtu.astimezone(BRT)
@@ -95,7 +132,6 @@ def marcador_tempo(dt_item, agora):
     delta = agora - dt_item
     horas = delta.total_seconds() / 3600
     dias = delta.days
-
     if horas < 2:
         return "AGORA"
     if horas < 24:
@@ -108,143 +144,186 @@ def marcador_tempo(dt_item, agora):
         return f"{dias // 7} sem"
     return f"{dias // 30} mes"
 
+def tokenize(texto: str):
+    texto = (texto or "").lower()
+    texto = re.sub(r"[^a-zà-ú0-9\s-]", " ", texto)
+    parts = [p.strip() for p in texto.split() if p.strip()]
+    out = []
+    for p in parts:
+        if len(p) < 3:
+            continue
+        if p in STOPWORDS_PT:
+            continue
+        out.append(p)
+    return out
+
+def score_texto(texto: str, palavras: list[str], locais: list[str]):
+    t = (texto or "").lower()
+    sc = 0
+    for w in palavras:
+        if w and w.lower() in t:
+            sc += 2
+    for loc in locais:
+        if loc and loc.lower() in t:
+            sc += 4
+    return sc
+
 def montar_google_news_url(assunto: str, local: str, janela: str):
-    """
-    Google News RSS. A 'janela' entra como parâmetro de recência (when).
-    """
     consulta = " ".join([x for x in [assunto.strip(), local.strip()] if x]).strip()
     if not consulta:
         consulta = "notícias"
 
-    # when:1d, when:7d, when:30d
-    when_map = {
-        "24h": "1d",
-        "7 dias": "7d",
-        "30 dias": "30d",
-    }
-    when = when_map.get(janela, None)
+    when_map = {"24h": "1d", "7 dias": "7d", "30 dias": "30d"}
+    when = when_map.get(janela)
     if when:
         consulta = f"{consulta} when:{when}"
 
     q = consulta.replace(" ", "+")
     return f"https://news.google.com/rss/search?q={q}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
 
-def score_texto(texto: str, palavras: list[str], locais: list[str]):
-    """
-    Score simples:
-    - termo do tema/assunto: +2 por ocorrência (checa presença)
-    - local: +4 por presença
-    """
-    t = (texto or "").lower()
-    score = 0
+# ==============================
+# Gemini
+# ==============================
 
-    for w in palavras:
-        if w and w.lower() in t:
-            score += 2
+def gemini_generate(prompt: str, temperature: float = 0.7, max_output_tokens: int = 900) -> str:
+    api_key = st.secrets.get("GEMINI_API_KEY", None)
+    if not api_key:
+        raise RuntimeError("Chave GEMINI_API_KEY não configurada.")
 
-    for loc in locais:
-        if loc and loc.lower() in t:
-            score += 4
-
-    return score
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    resp = model.generate_content(
+        prompt,
+        generation_config={
+            "temperature": float(temperature),
+            "max_output_tokens": int(max_output_tokens),
+        },
+    )
+    text = (getattr(resp, "text", "") or "").strip()
+    if not text:
+        raise RuntimeError("A IA não retornou texto.")
+    return text
 
 # ==============================
-# APP
+# UI
 # ==============================
 
 profile = load_profile()
 
 st.title("📡 Radar de Notícias")
-st.caption(f"{profile['nome_portal']} • {profile['assinatura']}")
+st.caption(f"{profile['nome_portal']} • {profile.get('assinatura','jcsnery.empresa')}")
 
-tabs = st.tabs(["Identidade", "Inteligência", "Produção"])
+tabs = st.tabs(["Radar", "Redação", "Perfil"])
 
-# ==============================
-# TAB: IDENTIDADE
-# ==============================
+# ------------------------------
+# PERFIL
+# ------------------------------
+with tabs[2]:
+    st.subheader("Perfil editorial")
 
-with tabs[0]:
-    nome = st.text_input("Nome do Portal", profile["nome_portal"])
-    assinatura = st.text_input("Assinatura", profile["assinatura"])
-    estilo = st.selectbox("Estilo", ["jornalistico", "analitico", "opinativo", "didatico"],
+    nome_portal = st.text_input("Nome do Portal", value=profile.get("nome_portal", "Radar de Notícias"))
+    nome_redator = st.text_input("Nome do Redator", value=profile.get("nome_redator", ""))
+    estilo = st.selectbox("Estilo de Escrita", ["jornalistico", "analitico", "opinativo", "didatico"],
                           index=["jornalistico", "analitico", "opinativo", "didatico"].index(profile.get("estilo", "jornalistico")))
-    linhas = st.slider("Quantidade aproximada de linhas", 4, 20, int(profile["linhas"]))
+    linhas = st.slider("Quantidade de linhas de Redação", 4, 20, int(profile.get("linhas", 10)))
     intencao = st.text_area("Intenção comunicativa", value=profile.get("intencao_comunicativa", ""))
 
     if st.button("Salvar Perfil"):
         save_profile({
-            "nome_portal": nome,
-            "assinatura": assinatura,
+            "nome_portal": nome_portal,
+            "nome_redator": nome_redator,
+            "assinatura": profile.get("assinatura", "jcsnery.empresa"),
             "estilo": estilo,
-            "intencao_comunicativa": intencao,
             "linhas": linhas,
+            "intencao_comunicativa": intencao,
         })
-        st.success("Perfil salvo!")
+        st.success("Perfil salvo.")
 
-# ==============================
-# TAB: INTELIGÊNCIA
-# ==============================
+# ------------------------------
+# RADAR
+# ------------------------------
+with tabs[0]:
+    st.subheader("Radar")
 
-with tabs[1]:
-    st.subheader("Varredura")
-
-    modo = st.selectbox("Modo", ["Busca global (resultado acima de fonte)", "Fontes fixas (RN)"])
-
-    col1, col2 = st.columns(2)
-    with col1:
-        tema_do_dia = st.selectbox("Tema (opcional)", ["(livre)"] + TEMAS)
-    with col2:
-        janela = st.selectbox("Janela de tempo", ["24h", "7 dias", "30 dias"])
-
-    assunto_livre = st.text_input("Assunto (ex: picolés, dengue, emprego)", placeholder="Digite um assunto…")
-    local_do_dia = st.text_input("Local (opcional) (ex: RN, Natal, Montes Claros, Groenlândia)", placeholder="Pode deixar em branco…")
+    colA, colB = st.columns(2)
+    with colA:
+        modo = st.selectbox("Modo", ["Busca Global", "Fontes fixas (RN)"])
+        editorial = st.selectbox("Editorial", EDITORIAIS, index=0)
+        janela = st.selectbox("Janela de tempo", ["24h", "7 dias", "30 dias"], index=0)
+        local = st.text_input("Local", placeholder="Brasil, RN, Natal, Groenlândia…")
+    with colB:
+        st.markdown("### Palavras em alta")
+        palavras_box = st.empty()
+        st.markdown("### Assuntos")
+        assuntos_box = st.empty()
 
     itens_por_fonte = st.slider("Itens por fonte", 5, 30, 10)
 
-    # Define assunto e palavras para score
-    if assunto_livre.strip():
-        assunto = assunto_livre.strip()
-        # termos do assunto para score (bem simples)
-        palavras_assunto = [p.strip().lower() for p in assunto.replace(",", " ").split() if len(p.strip()) >= 3]
-    elif tema_do_dia != "(livre)":
-        assunto = tema_do_dia
-        palavras_assunto = PALAVRAS_TEMA.get(tema_do_dia, [])
-    else:
-        assunto = ""
-        palavras_assunto = []
+    # Guia de publicações (MVP)
+    st.markdown("### Guia de Publicações")
+    agenda = load_agenda()
+    hoje = dt.date.today()
 
-    if modo == "Fontes fixas (RN)":
-        sites = {
-            "Tribuna do Norte": "https://tribunadonorte.com.br/feed/",
-            "Agora RN": "https://agorarn.com.br/feed/",
-        }
-    else:
-        sites = {
-            "Google News": montar_google_news_url(assunto or "notícias", local_do_dia, janela)
-        }
+    feitas = [x for x in agenda["itens"] if x.get("status") == "feita"]
+    a_fazer = [x for x in agenda["itens"] if x.get("status") != "feita"]
 
-    if st.button("Vamos lá 🚀 Executar varredura"):
-        resultados = []
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Feitas**")
+        if feitas:
+            for it in sorted(feitas, key=lambda x: (x.get("data",""), x.get("hora","")))[-3:]:
+                st.caption(f"{it.get('data','')} {it.get('hora','')} • {it.get('titulo','')} • {it.get('canal','')}")
+        else:
+            st.caption("—")
+    with c2:
+        st.markdown("**A fazer**")
+        if a_fazer:
+            for it in sorted(a_fazer, key=lambda x: (x.get("data",""), x.get("hora","")))[:3]:
+                st.caption(f"{it.get('data','')} {it.get('hora','')} • {it.get('titulo','')} • {it.get('canal','')}")
+        else:
+            st.caption("—")
+
+    st.divider()
+
+    assunto_livre = st.text_input("Assunto (opcional)", placeholder="Ex: copa do mundo, CPI INSS, dengue…")
+
+    if st.button("Buscar notícias"):
         agora = datetime.now(BRT)
-        locais_norm = normalizar_locais(local_do_dia)
+        locais_norm = normalizar_locais(local)
 
-        for nome_site, url in sites.items():
+        # palavras para score
+        if editorial != "livre":
+            palavras = PALAVRAS_TEMA.get(editorial, [])
+        else:
+            palavras = [p for p in tokenize(assunto_livre)[:10]]
+
+        resultados = []
+
+        if modo == "Fontes fixas (RN)":
+            sites = {
+                "Tribuna do Norte": "https://tribunadonorte.com.br/feed/",
+                "Agora RN": "https://agorarn.com.br/feed/",
+            }
+        else:
+            q = assunto_livre.strip() or (editorial if editorial != "livre" else "notícias")
+            sites = {"Google News": montar_google_news_url(q, local, janela)}
+
+        for fonte, url in sites.items():
             feed = feedparser.parse(url)
-
             for entry in feed.entries[:itens_por_fonte]:
                 titulo = getattr(entry, "title", "").strip()
                 link = getattr(entry, "link", "").strip()
                 resumo = entry.get("summary", "") or ""
                 dt_item = extrair_data_entry(entry)
 
-                texto_base = f"{titulo} {resumo}"
-                sc = score_texto(texto_base, palavras_assunto, locais_norm)
+                base = f"{titulo} {resumo}"
+                sc = score_texto(base, palavras, locais_norm)
 
                 resultados.append({
                     "quando": marcador_tempo(dt_item, agora),
                     "data_txt": dt_item.strftime("%d %b %Y • %H:%M (BRT)") if dt_item else "data não informada pela fonte",
-                    "data": dt_item,  # datetime ou None
-                    "fonte": nome_site,
+                    "data": dt_item,
+                    "fonte": fonte,
                     "titulo": titulo,
                     "link": link,
                     "resumo": resumo,
@@ -252,31 +331,45 @@ with tabs[1]:
                 })
 
         df = pd.DataFrame(resultados)
-
         if df.empty:
             st.warning("Nenhum resultado encontrado.")
+            st.session_state.pop("ranking", None)
         else:
-            # Ordenação: score desc + recência desc (None vai pro fim)
             df["data_ord"] = pd.to_datetime(df["data"], utc=True, errors="coerce")
             df["data_ord"] = df["data_ord"].fillna(pd.Timestamp("1970-01-01", tz="UTC"))
             df = df.sort_values(["score", "data_ord"], ascending=[False, False]).reset_index(drop=True)
 
             st.session_state["ranking"] = df
+
+            # Palavras em alta
+            tokens = []
+            for _, r in df.head(30).iterrows():
+                tokens.extend(tokenize(r.get("titulo", "")))
+            top = [w for w, _ in Counter(tokens).most_common(8)]
+            palavras_box.info("\n".join([w.upper() for w in top]) if top else "—")
+
+            # Assuntos (top títulos)
+            assuntos = [r.get("titulo","") for _, r in df.head(5).iterrows()]
+            assuntos_box.info("\n".join(assuntos) if assuntos else "—")
+
             st.dataframe(df[["quando", "data_txt", "fonte", "titulo", "score", "link"]].head(15), use_container_width=True)
 
-# ==============================
-# TAB: PRODUÇÃO
-# ==============================
+# ------------------------------
+# REDAÇÃO
+# ------------------------------
+with tabs[1]:
+    st.subheader("Redação")
 
-with tabs[2]:
-    api_key = st.secrets.get("OPENAI_API_KEY", None)
+    pub = load_publicacoes()
+    if pub["itens"]:
+        st.markdown("**Últimas publicações**")
+        for it in pub["itens"][-3:][::-1]:
+            st.caption(f"{it.get('data','')} • {it.get('titulo','')}")
 
-    if not api_key:
-        st.error("Chave OPENAI_API_KEY não configurada.")
-        st.stop()
+    st.divider()
 
     if "ranking" not in st.session_state or st.session_state["ranking"].empty:
-        st.warning("Execute a varredura antes.")
+        st.warning("Busque notícias no Radar antes.")
         st.stop()
 
     df = st.session_state["ranking"]
@@ -288,46 +381,81 @@ with tabs[2]:
     )
 
     materia = df.iloc[escolha]
-    st.caption(f"🗓️ {materia['data_txt']}  |  📰 {materia['fonte']}")
+    st.caption(f"🗓️ {materia['data_txt']} | 📰 {materia['fonte']}")
 
-    if st.button("Gerar texto com IA ✍️"):
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        canal = st.selectbox("Canal", ["Instagram", "Facebook", "WhatsApp", "Site"])
+    with col2:
+        data_post = st.date_input("Data", value=dt.date.today())
+    with col3:
+        hora_post = st.time_input("Hora", value=dt.time(18, 0))
+
+    uso = verificar_limite()
+    st.caption(f"Limite diário: {uso['contador']}/{MAX_DIARIO}")
+
+    if st.button("Gerar publicação"):
         uso = verificar_limite()
-
         if uso["contador"] >= MAX_DIARIO:
-            st.error("Limite diário de 3 gerações atingido.")
+            st.error("Limite diário atingido.")
             st.stop()
 
         prompt = f"""
 Você é redator do portal {profile['nome_portal']}.
+Autor/assinatura: {profile.get('nome_redator','')} • {profile.get('assinatura','')}
 Estilo: {profile['estilo']}
 Intenção: {profile['intencao_comunicativa']}
-Escreva cerca de {profile['linhas']} linhas.
+Tamanho: ~{profile['linhas']} linhas.
 
 Base (notícia):
 Fonte: {materia['fonte']}
 Data: {materia['data_txt']}
 Título: {materia['titulo']}
 Resumo: {materia['resumo']}
+Link: {materia['link']}
 
-Regras:
+Entrega:
+- Texto pronto para publicação no canal: {canal}
+- Linguagem PT-BR
 - Não invente fatos além do que está na base.
-- Se a base for insuficiente, deixe claro que o texto é um resumo a partir do feed.
+- Se a base for insuficiente, deixe claro que é um resumo a partir do feed.
 """
 
-        client = OpenAI(api_key=api_key)
+        try:
+            texto = gemini_generate(prompt, temperature=0.7, max_output_tokens=900)
 
-        resposta = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Você escreve textos jornalísticos em português do Brasil, sem inventar fatos."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.7,
-        )
+            # registra uso
+            uso["contador"] += 1
+            salvar_uso(uso)
 
-        uso["contador"] += 1
-        salvar_uso(uso)
+            # salva publicação
+            pub = load_publicacoes()
+            pub["itens"].append({
+                "id": str(uuid.uuid4()),
+                "data": datetime.now(BRT).strftime("%d/%m/%Y %H:%M"),
+                "titulo": materia["titulo"],
+                "texto": texto,
+                "fonte": materia["fonte"],
+                "link": materia["link"],
+                "canal": canal,
+            })
+            save_publicacoes(pub)
 
-        st.success("Texto gerado!")
-        st.text_area("Resultado", resposta.choices[0].message.content, height=320)
-        st.caption(f"Gerações hoje: {uso['contador']}/{MAX_DIARIO}")
+            # adiciona ao planner
+            agenda = load_agenda()
+            agenda["itens"].append({
+                "id": str(uuid.uuid4()),
+                "data": data_post.strftime("%d/%m/%Y"),
+                "hora": hora_post.strftime("%H:%M"),
+                "titulo": materia["titulo"][:110],
+                "canal": canal,
+                "status": "a_fazer",
+            })
+            save_agenda(agenda)
+
+            st.success("Publicação gerada e adicionada ao planner.")
+            st.text_area("Resultado", texto, height=320)
+
+        except Exception as e:
+            st.error("Erro ao gerar com Gemini.")
+            st.exception(e)
