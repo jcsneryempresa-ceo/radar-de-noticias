@@ -211,8 +211,8 @@ for m in genai.list_models():
 
     texto = (getattr(resp, "text", "") or "").strip()
     if not texto:
-        raise RuntimeError("A IA não retornou texto.")
-        return texto
+    raise RuntimeError("A IA não retornou texto.")
+    return texto
 
 # ==============================
 # UI
