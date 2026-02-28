@@ -192,6 +192,14 @@ def gemini_generate(prompt: str, temperature: float = 0.7, max_output_tokens: in
 
     client = genai.Client(api_key=api_key)
 
+import google.generativeai as genai
+
+# Liste os modelos disponíveis para sua chave
+for m in genai.list_models():
+    if 'generateContent' in m.supported_generation_methods:
+        print(m.name)
+
+    
     resp = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=prompt,
