@@ -421,36 +421,31 @@ with tabs[1]:
             st.error("Limite diário atingido.")
             st.stop()
 
-        prompt = f"""
-Você é rprompt = f"""
-Você é redator profissional do portal {profile['nome_portal']}.
-
-Escreva um texto final pronto para publicação.
-
-REGRAS OBRIGATÓRIAS:
-- NÃO escreva introduções como "Aqui está o texto".
-- NÃO explique o que você está fazendo.
-- NÃO use separadores como "---".
-- NÃO use markdown.
-- Entregue SOMENTE o texto final.
-- Escreva aproximadamente {profile['linhas']} linhas reais.
-- Linguagem PT-BR.
-- Seja direto e concreto.
-- Não invente informações que não estejam na base.
-- Se a base for limitada, deixe claro que é um resumo a partir do feed.
-
-DIRETRIZES:
-Estilo: {profile['estilo']}
-Intenção comunicativa: {profile['intencao_comunicativa']}
-Canal: {canal}
-
-BASE:
-Fonte: {materia['fonte']}
-Data: {materia['data_txt']}
-Título: {materia['titulo']}
-Resumo: {materia['resumo']}
-Link: {materia['link']}
-"""
+    prompt = (
+    f"Você é redator profissional do portal {profile['nome_portal']}.\n\n"
+    "Escreva um texto final pronto para publicação.\n\n"
+    "REGRAS OBRIGATÓRIAS:\n"
+    "- NÃO escreva introduções como 'Aqui está o texto'.\n"
+    "- NÃO explique o que você está fazendo.\n"
+    "- NÃO use separadores como '---'.\n"
+    "- NÃO use markdown.\n"
+    "- Entregue SOMENTE o texto final.\n"
+    f"- Escreva aproximadamente {profile['linhas']} linhas reais.\n"
+    "- Linguagem PT-BR.\n"
+    "- Seja direto e concreto.\n"
+    "- Não invente informações que não estejam na base.\n"
+    "- Se a base for limitada, deixe claro que é um resumo a partir do feed.\n\n"
+    "DIRETRIZES:\n"
+    f"Estilo: {profile['estilo']}\n"
+    f"Intenção comunicativa: {profile['intencao_comunicativa']}\n"
+    f"Canal: {canal}\n\n"
+    "BASE:\n"
+    f"Fonte: {materia['fonte']}\n"
+    f"Data: {materia['data_txt']}\n"
+    f"Título: {materia['titulo']}\n"
+    f"Resumo: {materia['resumo']}\n"
+    f"Link: {materia['link']}\n"
+    )
 
         try:
             texto = gemini_generate(prompt, temperature=0.7, max_output_tokens=900)
