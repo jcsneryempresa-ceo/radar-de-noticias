@@ -11,6 +11,26 @@ import feedparser
 import pandas as pd
 import google.generativeai as genai
 
+
+def teste_ia_gemini():
+    try:
+        api_key = st.secrets.get("GEMINI_API_KEY", None)
+        if not api_key:
+            return False, "FALTA: GEMINI_API_KEY nos Secrets"
+
+        client = genai.Client(api_key=api_key)
+
+        resp = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents="Responda apenas: OK",
+            config={"max_output_tokens": 10, "temperature": 0},
+        )
+        txt = (getattr(resp, "text", "") or "").strip()
+        return True, f"OK: resposta = {txt!r}"
+
+    except Exception as e:
+        return False, f"ERRO REAL: {type(e).__name__}: {e}"
+
 # ==============================
 # CONFIGURAÇÕES E CONSTANTES
 # ==============================
@@ -242,6 +262,15 @@ with tabs[1]:
         uso = verificar_limite()
         st.caption(f"Cota IA: {uso['contador']}/{MAX_DIARIO}")
 
+
+        if st.button("🧪 Testar IA (Gemini)"):
+    ok, msg = teste_ia_gemini()
+    if ok:
+        st.success(msg)
+    else:
+        st.error(msg)
+
+        
         if st.button("Gerar Texto"):
             if uso["contador"] >= MAX_DIARIO:
                 st.error("Limite atingido.")
