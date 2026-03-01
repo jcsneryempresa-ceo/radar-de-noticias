@@ -264,11 +264,11 @@ with tabs[1]:
 
 
         if st.button("🧪 Testar IA (Gemini)"):
-    ok, msg = teste_ia_gemini()
-    if ok:
-        st.success(msg)
-    else:
-        st.error(msg)
+            ok, msg = teste_ia_gemini()
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
 
         
         if st.button("Gerar Texto"):
