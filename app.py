@@ -451,7 +451,7 @@ with tabs[1]:
         prompt = montar_prompt_publicacao(profile, canal, materia)
 
         try:
-            texto = gemini_generate(prompt, temperature=0.5, max_output_tokens=1500)
+            texto = gemini_generate(prompt, temperature=0.5, max_output_tokens=3000)
 
             # Se vier com “capa” mesmo assim, corta até a primeira linha útil
             texto = texto.strip()
