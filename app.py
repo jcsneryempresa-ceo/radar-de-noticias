@@ -422,24 +422,34 @@ with tabs[1]:
             st.stop()
 
         prompt = f"""
-Você é redator do portal {profile['nome_portal']}.
-Autor/assinatura: {profile.get('nome_redator','')} • {profile.get('assinatura','')}
-Estilo: {profile['estilo']}
-Intenção: {profile['intencao_comunicativa']}
-Tamanho: ~{profile['linhas']} linhas.
+Você é rprompt = f"""
+Você é redator profissional do portal {profile['nome_portal']}.
 
-Base (notícia):
+Escreva um texto final pronto para publicação.
+
+REGRAS OBRIGATÓRIAS:
+- NÃO escreva introduções como "Aqui está o texto".
+- NÃO explique o que você está fazendo.
+- NÃO use separadores como "---".
+- NÃO use markdown.
+- Entregue SOMENTE o texto final.
+- Escreva aproximadamente {profile['linhas']} linhas reais.
+- Linguagem PT-BR.
+- Seja direto e concreto.
+- Não invente informações que não estejam na base.
+- Se a base for limitada, deixe claro que é um resumo a partir do feed.
+
+DIRETRIZES:
+Estilo: {profile['estilo']}
+Intenção comunicativa: {profile['intencao_comunicativa']}
+Canal: {canal}
+
+BASE:
 Fonte: {materia['fonte']}
 Data: {materia['data_txt']}
 Título: {materia['titulo']}
 Resumo: {materia['resumo']}
 Link: {materia['link']}
-
-Entrega:
-- Texto pronto para publicação no canal: {canal}
-- Linguagem PT-BR
-- Não invente fatos além do que está na base.
-- Se a base for insuficiente, deixe claro que é um resumo a partir do feed.
 """
 
         try:
