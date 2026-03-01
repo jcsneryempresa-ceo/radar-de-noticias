@@ -1,4 +1,4 @@
 streamlit
 feedparser
 pandas
-google-generativeai
+google-genai
