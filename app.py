@@ -130,11 +130,14 @@ def montar_google_news_url(assunto: str, local: str, janela: str):
 # FUNÇÃO GEMINI (SDK ESTÁVEL)
 # ==============================
 
+import google.generativeai as genai
+
 def gemini_generate(prompt: str, temperature: float = 0.7, max_output_tokens: int = 900) -> str:
     api_key = st.secrets.get("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("Chave GEMINI_API_KEY não configurada nos Secrets.")
+        raise RuntimeError("Chave não configurada nos Secrets.")
     
+    # Configuração estável
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-1.5-flash")
     
@@ -149,6 +152,7 @@ def gemini_generate(prompt: str, temperature: float = 0.7, max_output_tokens: in
     if not resp.text:
         raise RuntimeError("A IA não retornou texto.")
     return resp.text.strip()
+
 
 # ==============================
 # INTERFACE STREAMLIT
