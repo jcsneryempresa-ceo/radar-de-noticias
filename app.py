@@ -9,8 +9,7 @@ from collections import Counter
 import streamlit as st
 import feedparser
 import pandas as pd
-import google.generativeai as genai
-
+from google import genai
 
 def teste_ia_gemini():
     try:
